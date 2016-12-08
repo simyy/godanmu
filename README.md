@@ -1,3 +1,4 @@
 # simDanmu
 
-a damu crawler by golang
+A Danmu program writen with golang.
+
