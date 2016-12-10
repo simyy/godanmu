@@ -51,10 +51,3 @@ func HttpGet(urlStr string, params map[string]string) ([]byte, error) {
 
     return result, nil
 }
-
-func Byte2Int(input []byte) int {
-    b_buf := bytes.NewBuffer(input)  
-    var x uint16
-    binary.Read(b_buf, binary.BigEndian, &x)
-    return int(x)
-}
