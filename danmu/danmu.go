@@ -221,17 +221,30 @@ func (p *PandaClient) InitSocket() {
             continue
         }
 
-        log.Println("收到字节数:", n)
-        log.Println("收到字节为:", recvBuffer)
+        //log.Println("收到字节数:", n)
+        //log.Println("收到字节为:", recvBuffer)
 
         prefix := []byte{0x00, 0x06, 0x00, 0x03}
 
         if bytes.HasPrefix(recvBuffer, prefix) {
             bufferSize := binary.BigEndian.Uint32(recvBuffer[11:15])
-            log.Println("收到内容长度:", bufferSize)
-            log.Println(recvBuffer[15:])
-            log.Println("收到弹幕内容:", recvBuffer[15+16:15+bufferSize])
-            log.Println("收到弹幕内容:", string(recvBuffer[15+16:15+bufferSize]))
+            //log.Println("收到内容长度:", bufferSize)
+            //log.Println(recvBuffer[15:])
+            //log.Println("收到弹幕内容:", recvBuffer[15+16:15+bufferSize])
+            //log.Println("收到弹幕内容:", string(recvBuffer[15+16:15+bufferSize]))
+            p.Parse(recvBuffer[15+16:15+bufferSize])
         }
+    }
+}
+
+func (p *PandaClient) Parse(data []byte) {
+    js, _ := simplejson.NewJson(data)
+    _type, _ := js.Get("type").String()
+    name, _ := js.Get("data").Get("from").Get("nickName").String()
+    content, _ := js.Get("data").Get("content").String()
+    if _type == "1" {
+        log.Println(name, content)
+    } else {
+        log.Println(string(data))
     }
 }

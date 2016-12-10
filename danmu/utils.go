@@ -8,8 +8,6 @@ import (
     "io/ioutil"
     "strings"
     "log"
-    "bytes"
-    "encoding/binary"
 )
 
 func TrimUrl(url string) string {
