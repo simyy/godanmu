@@ -5,31 +5,34 @@ import (
     "encoding/hex"
     "net/url"
     "net/http"
-    "log"
     "io/ioutil"
     "strings"
+    "log"
+    "bytes"
+    "encoding/binary"
 )
 
 func TrimUrl(url string) string {
     res := strings.TrimSpace(url) 
-    return strings.TrimSuffix("/")
+    return strings.TrimSuffix(res, "/")
 }
 
 func GetRoomId(url string) string {
-    return strings.Splist(url, "/")[-1]
+    s := strings.Split(url, "/")
+    return s[len(s) - 1]
 }
 
 // generate md5 for roomMap key
 func GenRoomKey(roomUrl string) string {
     md5Ctx := md5.New()
-    md5Ctx.Write([]byte(roomUrl)
+    md5Ctx.Write([]byte(roomUrl))
     cipherStr := md5Ctx.Sum(nil)
     return hex.EncodeToString(cipherStr)
 }
 
 // http GET
-func HttpGet(url string, params map[string]string) string, error {
-    u, _ := url.Parse(url)
+func HttpGet(urlStr string, params map[string]string) ([]byte, error) {
+    u, _ := url.Parse(urlStr)
     if len(params) > 0 {
         q := u.Query()
         for k, v := range params {
@@ -37,16 +40,21 @@ func HttpGet(url string, params map[string]string) string, error {
         }
         u.RawQuery = q.Encode()
     } 
+    log.Println(u.String())
     res, err := http.Get(u.String())
     if err != nil {
         return nil, err
     }
 
-    result, err := ioutil.ReadAll(res.Body)
+    result, _ := ioutil.ReadAll(res.Body)
     res.Body.Close()
-    if err != nil {
-        return nil, err
-    }
 
     return result, nil
+}
+
+func Byte2Int(input []byte) int {
+    b_buf := bytes.NewBuffer(input)  
+    var x uint16
+    binary.Read(b_buf, binary.BigEndian, &x)
+    return int(x)
 }
