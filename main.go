@@ -8,7 +8,7 @@ import (
 func main() {
     log.Println("程序启动")
     danmu := danmu.New() 
-    danmu.Register("http://www.panda.tv/777777")
+    danmu.Add("http://www.panda.tv/471358")
     danmu.Run()
     log.Println("程序结束")
 }
