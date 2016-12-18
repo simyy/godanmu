@@ -95,14 +95,10 @@ func getGetInfoParams(cr Chatroom) (GetInfo, error) {
         return gi, err
     }
 
-    log.Println(string(body))
-
     err = json.Unmarshal(body, &gi)
     if err != nil {
         return gi, err
     }
-
-    log.Println(gi.Data)
 
     return gi, nil
 }
@@ -128,8 +124,6 @@ func (p *PandaClient) loadConfig() bool {
     p.sign = getInfo.Data.Sign
     p.authtype = getInfo.Data.AuthType
     p.addrlist = getInfo.Data.AddrList
-
-    log.Println(p, getInfo.Data)
 
     return true
 }

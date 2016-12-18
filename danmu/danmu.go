@@ -1,53 +1,57 @@
 package danmu
 
 import (
-    "strings"
+	"strings"
 )
-
 
 var danmu *Danmu
 
 type Danmu struct {
-    roomMap map[string]string
+	roomMap map[string]string
 }
 
 func init() {
-    danmu = &Danmu{roomMap: make(map[string]string)}
+	danmu = &Danmu{roomMap: make(map[string]string)}
 }
 
 func New() *Danmu {
-    return danmu
+	return danmu
 }
 
 func (d *Danmu) Add(roomUrl string) {
-    roomUrl = TrimUrl(roomUrl)
-    key := GenRoomKey(roomUrl)
-    if _, ok := d.roomMap[key]; !ok {
-        d.roomMap[key] = roomUrl
-    }
+	roomUrl = TrimUrl(roomUrl)
+	key := GenRoomKey(roomUrl)
+	if _, ok := d.roomMap[key]; !ok {
+		d.roomMap[key] = roomUrl
+	}
 }
 
 func (d *Danmu) Delete(roomUrl string) {
-    roomUrl = TrimUrl(roomUrl)
-    key := GenRoomKey(roomUrl)
-    if _, ok := d.roomMap[key]; ok {
-        delete(d.roomMap, key)
-    }
+	roomUrl = TrimUrl(roomUrl)
+	key := GenRoomKey(roomUrl)
+	if _, ok := d.roomMap[key]; ok {
+		delete(d.roomMap, key)
+	}
 }
 
 func worker(roomUrl string) {
-    if strings.Contains(roomUrl, "panda.tv") {
-        p := &PandaClient{url: roomUrl}
-        p.Run()
-    }
+	if strings.Contains(roomUrl, "panda.tv") {
+		p := &PandaClient{url: roomUrl}
+		p.Run()
+	}
+
+	if strings.Contains(roomUrl, "douyu.com") {
+		p := &DouyuClient{url: roomUrl}
+		p.Run()
+	}
 }
 
 func (d *Danmu) Run() {
-    if len(d.roomMap) == 0 {
-        return
-    }
+	if len(d.roomMap) == 0 {
+		return
+	}
 
-    for _, v := range d.roomMap {
-        worker(v)
-    }
+	for _, v := range d.roomMap {
+		worker(v)
+	}
 }
