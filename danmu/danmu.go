@@ -4,18 +4,13 @@ import (
 	"strings"
 )
 
-var danmu *Danmu
-
 type Danmu struct {
+	channel chan int
 	roomMap map[string]string
 }
 
-func init() {
-	danmu = &Danmu{roomMap: make(map[string]string)}
-}
-
-func New() *Danmu {
-	return danmu
+func New(channel chan int) *Danmu {
+	return &Danmu{channel: channel, roomMap: make(map[string]string)}
 }
 
 func (d *Danmu) Add(roomUrl string) {
@@ -37,12 +32,17 @@ func (d *Danmu) Delete(roomUrl string) {
 func worker(roomUrl string) {
 	if strings.Contains(roomUrl, "panda.tv") {
 		p := &PandaClient{url: roomUrl}
-		p.Run()
+		go p.Run()
 	}
 
 	if strings.Contains(roomUrl, "douyu.com") {
 		p := &DouyuClient{url: roomUrl}
-		p.Run()
+		go p.Run()
+	}
+
+	if strings.Contains(roomUrl, "quanmin.tv") {
+		p := &QuanminClient{url: roomUrl}
+		go p.Run()
 	}
 }
 
