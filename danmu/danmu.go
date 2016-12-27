@@ -7,10 +7,22 @@ import (
 type Danmu struct {
 	channel chan int
 	roomMap map[string]string
+	clients map[int]interface{}
 }
 
 func New(channel chan int) *Danmu {
-	return &Danmu{channel: channel, roomMap: make(map[string]string)}
+    clients := make(map[string]interface{})
+    clients["panda"]   = NewPandaClient()
+    clients["douyu"]   = NewDouyuClient()
+    clients["huomao"]  = NewHuomaoClient()
+    clients["quanmin"] = NewQuanminClient()
+
+    danmu := &Danmu{
+		channel: channel,
+		roomMap: make(map[string]string),
+        clients: clients
+    }
+
 }
 
 func (d *Danmu) Add(roomUrl string) {
@@ -19,6 +31,11 @@ func (d *Danmu) Add(roomUrl string) {
 	if _, ok := d.roomMap[key]; !ok {
 		d.roomMap[key] = roomUrl
 	}
+
+    d.add2Client(roomUrl)
+}
+
+func (d *Danmu) add2Client(roomUrl) {
 }
 
 func (d *Danmu) Delete(roomUrl string) {
