@@ -13,17 +13,47 @@ import (
 	"time"
 )
 
-type DouyuClient struct {
-	url    string
-	roomId int
+type Douyu struct {
+	rooms map[string]string
 }
 
-func (d *DouyuClient) Run() {
-	d.roomId = d.getRoomId()
-	d.initSocket()
+func NewDouyu() *Douyu {
+	return &Douyu{rooms: make(map[string]string)}
 }
 
-func (d *DouyuClient) getRoomId() int {
+func (d *Douyu) Has(url string) bool {
+	key := GenRoomKey(url)
+	if _, ok := d.rooms[key]; ok {
+		return true
+	}
+	return false
+}
+
+func (d *Douyu) Add(url string) {
+	if d.Has(url) {
+		return
+	}
+	key := GenRoomKey(url)
+	d.rooms[key] = url
+}
+
+func (d *Douyu) Online(url string) bool {
+	// TODO
+	return false
+}
+
+func (d *Douyu) Run() {
+	for _, url := range d.rooms {
+		roomId = d.getRoomId(url)
+		if roomId < 0 {
+			continue
+		}
+
+		// TODO
+	}
+}
+
+func (d *Douyu) getRoomId() int {
 	tmpl := "http://open.douyucdn.cn/api/RoomApi/room/%s"
 	configUrl := fmt.Sprintf(tmpl, GetRoomId(d.url))
 	body, err := HttpGet(configUrl, nil)
@@ -70,7 +100,7 @@ func pull(conn net.Conn) []byte {
 	return nil
 }
 
-func (d *DouyuClient) initSocket() {
+func (d *Douyu) initSocket() {
 	log.Println("初始化网络连接 For DouyuTV")
 
 	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
@@ -104,7 +134,7 @@ func (d *DouyuClient) initSocket() {
 
 }
 
-func (d *DouyuClient) parse(data []byte) {
+func (d *Douyu) parse(data []byte) {
 	content := string(data)
 	content = strings.Replace(content, "@=", "\":\"", -1)
 	content = strings.Replace(content, "/", "\",\"", -1)

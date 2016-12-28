@@ -13,7 +13,6 @@ func (h *HuomaoClient) Run() {
 }
 
 func (h *HuomaoClient) loadConfig() {
-
 }
 
 func (h *HuomaoClient) initSocket() {
