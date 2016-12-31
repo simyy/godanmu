@@ -5,21 +5,17 @@ import (
 	"log"
 )
 
-func main() {
-	log.Println("程序启动")
-
-	c := make(chan int)
-
-	danmu := danmu.New(c)
-	// danmu.Add("http://www.panda.tv/573130")
-	// danmu.Add("http://www.douyu.com/976537")
-
-	danmu.Add("http://www.quanmin.tv/v/15")
-	danmu.Run()
-
-	for i := 0; i < 2; i++ {
-		<-c
+func Handler(msg *danmu.Msg) {
+	if !msg.IsMsg() {
+		log.Println(msg.Site, msg.Room, msg.Other)
+	} else {
+		log.Println(msg.Site, msg.Room, msg.Name, msg.Text)
 	}
+}
 
-	log.Println("程序结束")
+func main() {
+	danmu := danmu.New(Handler)
+	danmu.Add("http://www.panda.tv/638744")
+	danmu.Add("http://www.panda.tv/434939")
+	danmu.Run()
 }

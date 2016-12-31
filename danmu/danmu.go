@@ -5,25 +5,77 @@ import (
 	"regexp"
 )
 
+type FuncType func(*Msg)
+
 type IDanmuClient interface {
-	Add()
-	Has() bool
-	Online() bool
-	Run()
-	Prepare()
-	Connect()
-	PushMsg(msg []byte)
-	PullMsg(callback func(msg []byte))
+	Add(url string)
+	Has(url string) bool
+	Remove(url string)
+	Online(url string) bool
+	Run(c chan int)
+	Prepare(p interface{}) error
+	Connect(p interface{}) error
+	Heartbeat(p interface{}) error
+	PushMsg(p interface{}, msg []byte) error
+	PullMsg(p interface{}, f FuncType) error
+}
+
+type Msg struct {
+	Site  string `json:site`
+	Room  string `json:room`
+	Name  string `json:name`
+	Text  string `json:text`
+	Other string `json:other`
+}
+
+func NewMsg(site, room, name, text string) *Msg {
+	return &Msg{
+		Site:  site,
+		Room:  room,
+		Name:  name,
+		Text:  text,
+		Other: ""}
+}
+
+func NewOther(site, room, other string) *Msg {
+	return &Msg{
+		Site:  site,
+		Room:  room,
+		Name:  "",
+		Text:  "",
+		Other: other}
+}
+
+func (m *Msg) IsMsg() bool {
+	if m.Other != "" {
+		return false
+	}
+	return true
 }
 
 type Danmu struct {
-	channel chan int
-	clients map[int]interface{}
+	stop    chan int
+	clients map[string]IDanmuClient
 }
 
-func (d *Danmu) match(roomUrl string) IDanmuClient {
-	reg := regexp.MustCompile(`.*\W+(\w*)\.[tvcom]{2,3}.*`)
-	key := reg.FindString(roomUrl)
+func New(f FuncType) *Danmu {
+	clients := make(map[string]IDanmuClient)
+	clients["panda"] = NewPanda(f)
+	//clients["douyu"] = NewDouyu()
+	//clients["huomao"] = NewHuomao()
+	//clients["quanmin"] = NewQuanmin()
+
+	danmu := &Danmu{
+		stop:    make(chan int),
+		clients: clients}
+
+	return danmu
+}
+
+func (d *Danmu) match(url string) IDanmuClient {
+	reg := regexp.MustCompile(`.*?(panda)\.[tvcom]{2,3}.*`)
+	key := reg.FindString(url)
+	key = "panda"
 	if _, ok := d.clients[key]; ok {
 		return d.clients[key]
 	}
@@ -31,30 +83,35 @@ func (d *Danmu) match(roomUrl string) IDanmuClient {
 	return nil
 }
 
-func New(channel chan int) *Danmu {
-	clients := make(map[string]interface{})
-	clients["panda"] = NewPanda()
-	clients["douyu"] = NewDouyu()
-	clients["huomao"] = NewHuomao()
-	clients["quanmin"] = NewQuanmin()
-
-	danmu := &Danmu{
-		channel: channel,
-		clients: clients}
-
-	return danmu
-}
-
-func (d *Danmu) Push(roomUrl string) {
-	roomUrl = TrimUrl(roomUrl)
-	key := GenRoomKey(roomUrl)
+func (d *Danmu) Add(url string) {
+	key := GenRoomKey(TrimUrl(url))
 	for _, client := range d.clients {
-		if _, ok := client[key]; ok {
-			log.Println("url exist:", roomUrl)
+		if client.Has(key) {
 			return
 		}
 	}
+	client := d.match(url)
+	client.Add(url)
+}
 
-	client := d.match(roomUrl)
-	client.Add(roomUrl)
+func (d *Danmu) Remove(url string) {
+	key := GenRoomKey(TrimUrl(url))
+	for _, client := range d.clients {
+		if client.Has(key) {
+			client.Remove(url)
+			return
+		}
+	}
+}
+
+func (d *Danmu) Run() {
+	log.Println("danmu start wait ...")
+	for _, client := range d.clients {
+		go client.Run(d.stop)
+	}
+
+	for i := 0; i < len(d.clients); i++ {
+		<-d.stop
+	}
+	log.Println("Danmu stop byte!!!")
 }
