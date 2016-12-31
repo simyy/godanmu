@@ -2,7 +2,7 @@ package danmu
 
 import (
 	"log"
-	"regexp"
+	"strings"
 )
 
 type FuncType func(*Msg)
@@ -73,11 +73,10 @@ func New(f FuncType) *Danmu {
 }
 
 func (d *Danmu) match(url string) IDanmuClient {
-	reg := regexp.MustCompile(`.*?(panda)\.[tvcom]{2,3}.*`)
-	key := reg.FindString(url)
-	key = "panda"
-	if _, ok := d.clients[key]; ok {
-		return d.clients[key]
+	for k, v := range d.clients {
+		if strings.Contains(url, k) {
+			return v
+		}
 	}
 
 	return nil
