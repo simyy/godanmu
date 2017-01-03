@@ -61,7 +61,7 @@ type Danmu struct {
 func New(f FuncType) *Danmu {
 	clients := make(map[string]IDanmuClient)
 	clients["panda"] = NewPanda(f)
-	//clients["douyu"] = NewDouyu()
+	clients["douyu"] = NewDouyu(f)
 	//clients["huomao"] = NewHuomao()
 	//clients["quanmin"] = NewQuanmin()
 
