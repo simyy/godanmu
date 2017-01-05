@@ -13,15 +13,25 @@ import (
 	"time"
 )
 
-type Douyu struct {
-	rooms map[string]string
+func NewDouyu(callback FuncType) *DouyuClient {
+	return &DouyuClient{
+		rooms:    make(map[string]*params),
+		callback: callback,
+		stop:     make(chan int)}
 }
 
-func NewDouyu() *Douyu {
-	return &Douyu{rooms: make(map[string]string)}
+type DouyuClient struct {
+	rooms    map[string]*params
+	callback FuncType
+	stop     chan int
 }
 
-func (d *Douyu) Has(url string) bool {
+type params struct {
+	url  string
+	conn net.Conn
+}
+
+func (d *DouyuClient) Has(url string) bool {
 	key := GenRoomKey(url)
 	if _, ok := d.rooms[key]; ok {
 		return true
@@ -29,28 +39,141 @@ func (d *Douyu) Has(url string) bool {
 	return false
 }
 
-func (d *Douyu) Add(url string) {
+func (d *DouyuClient) Add(url string) {
 	if d.Has(url) {
 		return
 	}
-	key := GenRoomKey(url)
-	d.rooms[key] = url
+	key := GenRoomKey(TrimUrl(url))
+	p := new(params)
+	p.url = url
+	p.room = GetRoomId(url)
+	d.rooms[key] = p
 }
 
-func (d *Douyu) Online(url string) bool {
+func (d *DouyuClient) Online(url string) bool {
 	// TODO
-	return false
+	return true
 }
 
-func (d *Douyu) Run() {
-	for _, url := range d.rooms {
-		roomId = d.getRoomId(url)
-		if roomId < 0 {
-			continue
-		}
+func (d *DouyuClient) Remove(url string) {
+	key := GenRoomKey(TrimUrl(url))
 
-		// TODO
+	if _, ok := d.rooms[key]; ok {
+		delete(d.rooms, key)
 	}
+}
+
+func (d *Douyu) Run(stop chan int) {
+	for _, param := range d.rooms {
+		// TODO
+        go worker(param)
+	}
+
+	for i := 0; i < len(d.rooms); i++ {
+		<-c.stop
+	}
+}
+
+func (d *DouyuClient) worker(p interface{}) {
+	err := d.Prepare(p)
+	if err != nil {
+		log.Println("Prepare error", err)
+		return
+	}
+
+	err := d.Connect(p)
+	if err != nil {
+		log.Println("Connect error", err)
+		return
+	}
+
+	d.PullMsg(p, d.callback)
+
+	d.stop <- 1
+}
+
+func (d *DouyuClient) Prepare(p interface{}) error {
+	return nil
+}
+
+func (d *DouyuClient) Connect(p interface{}) error {
+	mparam := p.(*params)
+
+	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
+	mparam.conn, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		log.Println("Connect error", err)
+		return err
+	}
+
+	tmpl := "type@=loginreq/roomid@=%d/"
+	msg := fmt.Sprintf(tmpl, p.room)
+	d.PushMsg(mparam, []byte(msg))
+
+	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
+	msg = fmt.Sprintf(tmpl, p.room)
+	d.PushMsg(mparam, []byte(msg))
+
+	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
+	d.PushMsg(mparam, []byte(tmpl))
+
+	return nil
+}
+
+func (d *DouyuClient) worker(p interface{}) {
+
+}
+
+func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
+	mparam := p.(*params)
+
+	s := 9 + len(msg)
+	int16buf := new(bytes.Buffer)
+	binary.Write(int16buf, binary.LittleEndian, uint32(s))
+	binary.Write(int16buf, binary.LittleEndian, uint32(s))
+
+	header := []byte{0xb1, 0x02, 0x00, 0x00}
+
+	var content bytes.Buffer
+	content.Write(int16buf.Bytes())
+	content.Write(header)
+	content.Write(msg)
+	content.Write([]byte{0x00})
+
+	mparam.conn.Write(content.Bytes())
+}
+
+func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
+	mparam := p.(*params)
+
+	tmpl := "type@=loginreq/roomid@=%d/"
+	msg := fmt.Sprintf(tmpl, mparam.room)
+    err := d.PushMsg(mparam.conn, []byte(msg))
+    if err != nil {
+        return err
+    }
+
+	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
+	msg = fmt.Sprintf(tmpl, p.room)
+    err := d.PushMsg(mparam.conn, []byte(msg))
+    if err != nil {
+        return err
+    }
+
+	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
+    err := d.PushMsg(mparam.conn, []byte(tmpl))
+    if err != nil {
+        return err
+    }
+
+	recvBuffer := make([]byte, 2048)
+	for {
+		conn.Read(recvBuffer)
+        msg := d.parse(mparam, recvBuffer)
+        f(msg)
+	}
+
+    return nil
 }
 
 func (d *Douyu) getRoomId() int {
@@ -62,79 +185,23 @@ func (d *Douyu) getRoomId() int {
 	}
 
 	js, _ := simplejson.NewJson(body)
-	if _err, _ := js.Get("error").Int(); _err != 0 {
+	if js.Get("error").MustInt() != 0 {
 		return 0
 	}
 
-	if status, _ := js.Get("data").Get("room_status").String(); status != "1" {
+	if js.Get("data").Get("room_status").MustString() != "1" {
 		return 0
 	}
 
-	roomId, _ := js.Get("data").Get("room_id").String()
+	roomId := js.Get("data").Get("room_id").MustString()
 	result, _ := strconv.Atoi(roomId)
 	return result
 }
 
-func push(conn net.Conn, msg []byte) {
-	s := 9 + len(msg)
 
-	int16buf := new(bytes.Buffer)
-	binary.Write(int16buf, binary.LittleEndian, uint32(s))
-	binary.Write(int16buf, binary.LittleEndian, uint32(s))
+func (d *Douyu) parse(p interface{}, data []byte) *Msg {
+	mparam := p.(*params)
 
-	//log.Println("int buffer", int16buf.Bytes())
-
-	header := []byte{0xb1, 0x02, 0x00, 0x00}
-
-	var content bytes.Buffer
-	content.Write(int16buf.Bytes())
-	content.Write(header)
-	content.Write(msg)
-	content.Write([]byte{0x00})
-
-	//log.Println(content.Bytes())
-	conn.Write(content.Bytes())
-}
-
-func pull(conn net.Conn) []byte {
-	return nil
-}
-
-func (d *Douyu) initSocket() {
-	log.Println("初始化网络连接 For DouyuTV")
-
-	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
-	conn, err := net.DialTCP("tcp", nil, addr)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	log.Println(d.roomId)
-	tmpl := "type@=loginreq/roomid@=%d/"
-	msg := fmt.Sprintf(tmpl, d.roomId)
-	push(conn, []byte(msg))
-
-	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
-	msg = fmt.Sprintf(tmpl, d.roomId)
-	push(conn, []byte(msg))
-
-	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
-	push(conn, []byte(tmpl))
-
-	recvBuffer := make([]byte, 2048)
-	for {
-		conn.Read(recvBuffer)
-		// log.Println(n, recvBuffer)
-
-		// bufferSize := binary.LittleEndian.Uint32(recvBuffer[0:4])
-		// log.Println(bufferSize)
-		d.parse(recvBuffer)
-	}
-
-}
-
-func (d *Douyu) parse(data []byte) {
 	content := string(data)
 	content = strings.Replace(content, "@=", "\":\"", -1)
 	content = strings.Replace(content, "/", "\",\"", -1)
@@ -145,11 +212,9 @@ func (d *Douyu) parse(data []byte) {
 	contents := reg.FindAllString(content, -1)
 	for _, item := range contents {
 		tmp := "{\"" + item + "}"
-		//log.Println(tmp)
 		sj, _ := simplejson.NewJson([]byte(tmp))
 		name, _ := sj.Get("nn").String()
 		txt, _ := sj.Get("txt").String()
-		log.Println(name, txt)
-
+        return NewMsg("douyu", mparam.room, name, txt)
 	}
 }
