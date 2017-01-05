@@ -15,19 +15,20 @@ import (
 
 func NewDouyu(callback FuncType) *DouyuClient {
 	return &DouyuClient{
-		rooms:    make(map[string]*params),
+		rooms:    make(map[string]*dparams),
 		callback: callback,
 		stop:     make(chan int)}
 }
 
 type DouyuClient struct {
-	rooms    map[string]*params
+	rooms    map[string]*dparams
 	callback FuncType
 	stop     chan int
 }
 
-type params struct {
+type dparams struct {
 	url  string
+	room string
 	conn net.Conn
 }
 
@@ -44,10 +45,14 @@ func (d *DouyuClient) Add(url string) {
 		return
 	}
 	key := GenRoomKey(TrimUrl(url))
-	p := new(params)
+	p := new(dparams)
 	p.url = url
-	p.room = GetRoomId(url)
+	p.room = d.getRoomId(url)
 	d.rooms[key] = p
+}
+
+func (d *DouyuClient) Heartbeat(p interface{}) error {
+	return nil
 }
 
 func (d *DouyuClient) Online(url string) bool {
@@ -63,14 +68,14 @@ func (d *DouyuClient) Remove(url string) {
 	}
 }
 
-func (d *Douyu) Run(stop chan int) {
+func (d *DouyuClient) Run(stop chan int) {
 	for _, param := range d.rooms {
 		// TODO
-        go worker(param)
+		go d.worker(param)
 	}
 
 	for i := 0; i < len(d.rooms); i++ {
-		<-c.stop
+		<-d.stop
 	}
 }
 
@@ -81,7 +86,7 @@ func (d *DouyuClient) worker(p interface{}) {
 		return
 	}
 
-	err := d.Connect(p)
+	err = d.Connect(p)
 	if err != nil {
 		log.Println("Connect error", err)
 		return
@@ -97,35 +102,33 @@ func (d *DouyuClient) Prepare(p interface{}) error {
 }
 
 func (d *DouyuClient) Connect(p interface{}) error {
-	mparam := p.(*params)
+	mparam := p.(*dparams)
 
 	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
-	mparam.conn, err := net.DialTCP("tcp", nil, addr)
+	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		log.Println("Connect error", err)
 		return err
 	}
 
+	mparam.conn = conn
+
 	tmpl := "type@=loginreq/roomid@=%d/"
-	msg := fmt.Sprintf(tmpl, p.room)
-	d.PushMsg(mparam, []byte(msg))
+	msg := fmt.Sprintf(tmpl, mparam.room)
+	d.PushMsg(p, []byte(msg))
 
 	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
-	msg = fmt.Sprintf(tmpl, p.room)
-	d.PushMsg(mparam, []byte(msg))
+	msg = fmt.Sprintf(tmpl, mparam.room)
+	d.PushMsg(p, []byte(msg))
 
 	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
-	d.PushMsg(mparam, []byte(tmpl))
+	d.PushMsg(p, []byte(tmpl))
 
 	return nil
 }
 
-func (d *DouyuClient) worker(p interface{}) {
-
-}
-
 func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
-	mparam := p.(*params)
+	mparam := p.(*dparams)
 
 	s := 9 + len(msg)
 	int16buf := new(bytes.Buffer)
@@ -141,66 +144,65 @@ func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
 	content.Write([]byte{0x00})
 
 	mparam.conn.Write(content.Bytes())
+
+	return nil
 }
 
 func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
-	mparam := p.(*params)
+	mparam := p.(*dparams)
 
-	tmpl := "type@=loginreq/roomid@=%d/"
+	tmpl := "type@=loginreq/roomid@=%s/"
 	msg := fmt.Sprintf(tmpl, mparam.room)
-    err := d.PushMsg(mparam.conn, []byte(msg))
-    if err != nil {
-        return err
-    }
+	err := d.PushMsg(mparam, []byte(msg))
+	if err != nil {
+		return err
+	}
 
 	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
-	msg = fmt.Sprintf(tmpl, p.room)
-    err := d.PushMsg(mparam.conn, []byte(msg))
-    if err != nil {
-        return err
-    }
+	msg = fmt.Sprintf(tmpl, mparam.room)
+	err = d.PushMsg(mparam, []byte(msg))
+	if err != nil {
+		return err
+	}
 
 	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
-    err := d.PushMsg(mparam.conn, []byte(tmpl))
-    if err != nil {
-        return err
-    }
+	err = d.PushMsg(mparam, []byte(tmpl))
+	if err != nil {
+		return err
+	}
 
 	recvBuffer := make([]byte, 2048)
 	for {
-		conn.Read(recvBuffer)
-        msg := d.parse(mparam, recvBuffer)
-        f(msg)
+		mparam.conn.Read(recvBuffer)
+		msg := d.parse(mparam, recvBuffer)
+		f(msg)
 	}
 
-    return nil
+	return nil
 }
 
-func (d *Douyu) getRoomId() int {
+func (d *DouyuClient) getRoomId(url string) string {
 	tmpl := "http://open.douyucdn.cn/api/RoomApi/room/%s"
-	configUrl := fmt.Sprintf(tmpl, GetRoomId(d.url))
+	configUrl := fmt.Sprintf(tmpl, GetRoomId(url))
 	body, err := HttpGet(configUrl, nil)
 	if err != nil {
-		return 0
+		return ""
 	}
 
 	js, _ := simplejson.NewJson(body)
 	if js.Get("error").MustInt() != 0 {
-		return 0
+		return ""
 	}
 
 	if js.Get("data").Get("room_status").MustString() != "1" {
-		return 0
+		return ""
 	}
 
-	roomId := js.Get("data").Get("room_id").MustString()
-	result, _ := strconv.Atoi(roomId)
-	return result
+	return js.Get("data").Get("room_id").MustString()
 }
 
-
-func (d *Douyu) parse(p interface{}, data []byte) *Msg {
-	mparam := p.(*params)
+func (d *DouyuClient) parse(p interface{}, data []byte) *Msg {
+	mparam := p.(*dparams)
 
 	content := string(data)
 	content = strings.Replace(content, "@=", "\":\"", -1)
@@ -215,6 +217,8 @@ func (d *Douyu) parse(p interface{}, data []byte) *Msg {
 		sj, _ := simplejson.NewJson([]byte(tmp))
 		name, _ := sj.Get("nn").String()
 		txt, _ := sj.Get("txt").String()
-        return NewMsg("douyu", mparam.room, name, txt)
+		return NewMsg("douyu", mparam.room, name, txt)
 	}
+
+	return NewOther("douyu", mparam.room, string(content))
 }
