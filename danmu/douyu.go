@@ -107,22 +107,10 @@ func (d *DouyuClient) Connect(p interface{}) error {
 	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
-		log.Println("Connect error", err)
 		return err
 	}
 
 	mparam.conn = conn
-
-	tmpl := "type@=loginreq/roomid@=%d/"
-	msg := fmt.Sprintf(tmpl, mparam.room)
-	d.PushMsg(p, []byte(msg))
-
-	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
-	msg = fmt.Sprintf(tmpl, mparam.room)
-	d.PushMsg(p, []byte(msg))
-
-	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
-	d.PushMsg(p, []byte(tmpl))
 
 	return nil
 }
@@ -143,7 +131,10 @@ func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
 	content.Write(msg)
 	content.Write([]byte{0x00})
 
-	mparam.conn.Write(content.Bytes())
+	_, err := mparam.conn.Write(content.Bytes())
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -158,7 +149,13 @@ func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
 		return err
 	}
 
-	tmpl = "type@=joingroup/rid@=%d/gid@=-9999/"
+	recvBuffer := make([]byte, 2048)
+
+	mparam.conn.Read(recvBuffer)
+
+	log.Println(string(recvBuffer))
+
+	tmpl = "type@=joingroup/rid@=%s/gid@=-9999/"
 	msg = fmt.Sprintf(tmpl, mparam.room)
 	err = d.PushMsg(mparam, []byte(msg))
 	if err != nil {
@@ -171,7 +168,8 @@ func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
 		return err
 	}
 
-	recvBuffer := make([]byte, 2048)
+	//recvBuffer := make([]byte, 2048)
+
 	for {
 		mparam.conn.Read(recvBuffer)
 		msg := d.parse(mparam, recvBuffer)
