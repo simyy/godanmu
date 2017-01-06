@@ -82,11 +82,25 @@ func (c *PandaClient) Run(stop chan int) {
 		go c.worker(p)
 	}
 
+	go c.Task()
+
 	for i := 0; i < len(c.rooms); i++ {
 		<-c.stop
 	}
 
 	stop <- 1
+}
+
+func (c *PandaClient) Task() {
+	t := time.NewTicker(time.Second * 2)
+	for {
+		<-t.C
+		log.Println("task")
+		for _, param := range c.rooms {
+			c.Heartbeat(param)
+		}
+	}
+
 }
 
 func (c *PandaClient) worker(p interface{}) {
