@@ -13,18 +13,18 @@ import (
 
 func NewPanda(callback FuncType) *PandaClient {
 	return &PandaClient{
-		rooms:    make(map[string]*params),
+		rooms:    make(map[string]*PandaParam),
 		callback: callback,
 		stop:     make(chan int)}
 }
 
 type PandaClient struct {
-	rooms    map[string]*params
+	rooms    map[string]*PandaParam
 	callback FuncType
 	stop     chan int
 }
 
-type params struct {
+type PandaParam struct {
 	url      string
 	room     string
 	conn     net.Conn
@@ -47,7 +47,7 @@ func (c *PandaClient) Has(key string) bool {
 func (c *PandaClient) Add(url string) {
 	key := GenRoomKey(TrimUrl(url))
 	if _, ok := c.rooms[key]; !ok {
-		p := new(params)
+		p := new(PandaParam)
 		p.url = url
 		p.room = GetRoomId(url)
 		c.rooms[key] = p
@@ -121,10 +121,10 @@ func (c *PandaClient) worker(p interface{}) {
 }
 
 func (c *PandaClient) Prepare(p interface{}) error {
-	mparam := p.(*params)
+	param := p.(*PandaParam)
 
 	val := make(map[string]string)
-	val["roomid"] = GetRoomId(mparam.url)
+	val["roomid"] = GetRoomId(param.url)
 	val["_"] = strconv.FormatInt(time.Now().Unix(), 10)
 	roomUrl := "http://www.panda.tv/ajax_chatroom"
 	body, err := HttpGet(roomUrl, val)
@@ -153,33 +153,33 @@ func (c *PandaClient) Prepare(p interface{}) error {
 		return err
 	}
 
-	mparam.u = fmt.Sprintf("%d@%s", js.Get("data").Get("rid").MustInt(),
+	param.u = fmt.Sprintf("%d@%s", js.Get("data").Get("rid").MustInt(),
 		js.Get("data").Get("appid").MustString())
-	mparam.k = 1
-	mparam.t = 300
-	mparam.ts = js.Get("data").Get("ts").MustInt()
-	mparam.sign = js.Get("data").Get("sign").MustString()
-	mparam.authtype = js.Get("data").Get("authType").MustString()
-	mparam.addrlist = js.Get("data").Get("chat_addr_list").MustStringArray()
+	param.k = 1
+	param.t = 300
+	param.ts = js.Get("data").Get("ts").MustInt()
+	param.sign = js.Get("data").Get("sign").MustString()
+	param.authtype = js.Get("data").Get("authType").MustString()
+	param.addrlist = js.Get("data").Get("chat_addr_list").MustStringArray()
 
 	return nil
 }
 
 func (c *PandaClient) Connect(p interface{}) error {
-	mparam := p.(*params)
-	addr, err := net.ResolveTCPAddr("tcp4", mparam.addrlist[0])
+	param := p.(*PandaParam)
+	addr, err := net.ResolveTCPAddr("tcp4", param.addrlist[0])
 	if err != nil {
 		return err
 	}
-	mparam.conn, err = net.DialTCP("tcp", nil, addr)
+	param.conn, err = net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		return err
 	}
 
-	msg := genWriteBuffer(mparam)
-	mparam.conn.Write(msg.Bytes())
+	msg := genWriteBuffer(param)
+	param.conn.Write(msg.Bytes())
 	// 写入呼吸包
-	mparam.conn.Write([]byte{0x00, 0x06, 0x00, 0x00})
+	param.conn.Write([]byte{0x00, 0x06, 0x00, 0x00})
 
 	return nil
 }
@@ -195,16 +195,16 @@ func (c *PandaClient) Heartbeat(p interface{}) error {
 }
 
 func (c *PandaClient) PushMsg(p interface{}, msg []byte) error {
-	mparam := p.(*params)
-	mparam.conn.Write(msg)
+	param := p.(*PandaParam)
+	param.conn.Write(msg)
 	return nil
 }
 
 func (c *PandaClient) PullMsg(p interface{}, f FuncType) error {
-	mparam := p.(*params)
+	param := p.(*PandaParam)
 	recvBuffer := make([]byte, 2048)
 	for {
-		n, err := mparam.conn.Read(recvBuffer)
+		n, err := param.conn.Read(recvBuffer)
 		if n == 0 || err != nil {
 			continue
 		}
@@ -219,7 +219,7 @@ func (c *PandaClient) PullMsg(p interface{}, f FuncType) error {
 	return nil
 }
 
-func genWriteBuffer(p *params) bytes.Buffer {
+func genWriteBuffer(p *PandaParam) bytes.Buffer {
 	var buffer bytes.Buffer
 	buffer.WriteString(fmt.Sprintf("u:%s", p.u))
 	buffer.WriteString("\n")
@@ -251,13 +251,13 @@ func genWriteBuffer(p *params) bytes.Buffer {
 }
 
 func parse(p interface{}, data []byte) *Msg {
-	mparam := p.(*params)
+	param := p.(*PandaParam)
 	js, _ := simplejson.NewJson(data)
 	_type, _ := js.Get("type").String()
 	if _type == "1" {
 		name := js.Get("data").Get("from").Get("nickName").MustString()
 		text := js.Get("data").Get("content").MustString()
-		return NewMsg("panda", mparam.room, name, text)
+		return NewMsg("panda", param.room, name, text)
 	}
-	return NewOther("panda", mparam.room, string(data))
+	return NewOther("panda", param.room, string(data))
 }
