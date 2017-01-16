@@ -153,8 +153,6 @@ func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
 
 	mparam.conn.Read(recvBuffer)
 
-	log.Println(string(recvBuffer))
-
 	tmpl = "type@=joingroup/rid@=%s/gid@=-9999/"
 	msg = fmt.Sprintf(tmpl, mparam.room)
 	err = d.PushMsg(mparam, []byte(msg))
@@ -167,8 +165,6 @@ func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
 	if err != nil {
 		return err
 	}
-
-	//recvBuffer := make([]byte, 2048)
 
 	for {
 		mparam.conn.Read(recvBuffer)

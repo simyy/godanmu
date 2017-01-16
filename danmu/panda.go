@@ -13,7 +13,7 @@ import (
 
 func NewPanda(callback FuncType) *PandaClient {
 	return &PandaClient{
-		rooms:    make(map[string]*PandaParam),
+		rooms:    make(map[string]*PandaRoom),
 		callback: callback,
 		stop:     make(chan int)}
 }
@@ -24,10 +24,15 @@ type PandaClient struct {
 	stop     chan int
 }
 
+type PandaRoom struct {
+	url   string
+	id    string
+	param PandaParam
+	conn  net.Conn
+	alive bool
+}
+
 type PandaParam struct {
-	url      string
-	room     string
-	conn     net.Conn
 	u        string
 	k        int
 	t        int
@@ -37,7 +42,8 @@ type PandaParam struct {
 	addrlist []string
 }
 
-func (c *PandaClient) Has(key string) bool {
+func (c *PandaClient) Has(url string) bool {
+	key := GenRoomKey(TrimUrl(url))
 	if _, ok := c.rooms[key]; ok {
 		return true
 	}
@@ -47,10 +53,11 @@ func (c *PandaClient) Has(key string) bool {
 func (c *PandaClient) Add(url string) {
 	key := GenRoomKey(TrimUrl(url))
 	if _, ok := c.rooms[key]; !ok {
-		p := new(PandaParam)
-		p.url = url
-		p.room = GetRoomId(url)
-		c.rooms[key] = p
+		room := new(PandaRoom)
+		room.url = url
+		room.id = GetRoomId(url)
+		room.alive = false
+		c.rooms[key] = room
 	}
 }
 
@@ -78,11 +85,15 @@ func (c *PandaClient) Remove(url string) {
 }
 
 func (c *PandaClient) Run(stop chan int) {
-	for _, p := range c.rooms {
-		go c.worker(p)
-	}
-
 	go c.Task()
+
+	for {
+		for _, room := range c.rooms {
+			if !room.alive {
+				go c.worker(room)
+			}
+		}
+	}
 
 	for i := 0; i < len(c.rooms); i++ {
 		<-c.stop
@@ -92,12 +103,13 @@ func (c *PandaClient) Run(stop chan int) {
 }
 
 func (c *PandaClient) Task() {
-	t := time.NewTicker(time.Second * 2)
+	t := time.NewTicker(time.Second * 60 * 2)
 	for {
 		<-t.C
-		log.Println("task")
-		for _, param := range c.rooms {
-			c.Heartbeat(param)
+		for _, room := range c.rooms {
+			if p.alive {
+				c.Heartbeat(room)
+			}
 		}
 	}
 
@@ -121,10 +133,10 @@ func (c *PandaClient) worker(p interface{}) {
 }
 
 func (c *PandaClient) Prepare(p interface{}) error {
-	param := p.(*PandaParam)
+	room := p.(*PandaRoom)
 
 	val := make(map[string]string)
-	val["roomid"] = GetRoomId(param.url)
+	val["roomid"] = GetRoomId(room.url)
 	val["_"] = strconv.FormatInt(time.Now().Unix(), 10)
 	roomUrl := "http://www.panda.tv/ajax_chatroom"
 	body, err := HttpGet(roomUrl, val)
@@ -153,6 +165,7 @@ func (c *PandaClient) Prepare(p interface{}) error {
 		return err
 	}
 
+	param = new(PandaRoom)
 	param.u = fmt.Sprintf("%d@%s", js.Get("data").Get("rid").MustInt(),
 		js.Get("data").Get("appid").MustString())
 	param.k = 1
@@ -161,6 +174,8 @@ func (c *PandaClient) Prepare(p interface{}) error {
 	param.sign = js.Get("data").Get("sign").MustString()
 	param.authtype = js.Get("data").Get("authType").MustString()
 	param.addrlist = js.Get("data").Get("chat_addr_list").MustStringArray()
+
+	room.param = param
 
 	return nil
 }
