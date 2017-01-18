@@ -14,20 +14,18 @@ import (
 func NewPanda(callback FuncType) *PandaClient {
 	return &PandaClient{
 		rooms:    make(map[string]*PandaRoom),
-		callback: callback,
-		stop:     make(chan int)}
+		callback: callback}
 }
 
 type PandaClient struct {
-	rooms    map[string]*PandaParam
+	rooms    map[string]*PandaRoom
 	callback FuncType
-	stop     chan int
 }
 
 type PandaRoom struct {
 	url   string
 	id    string
-	param PandaParam
+	param *PandaParam
 	conn  net.Conn
 	alive bool
 }
@@ -85,7 +83,7 @@ func (c *PandaClient) Remove(url string) {
 }
 
 func (c *PandaClient) Run(stop chan int) {
-	go c.Task()
+	go c.Task(2 * 60)
 
 	for {
 		for _, room := range c.rooms {
@@ -93,21 +91,20 @@ func (c *PandaClient) Run(stop chan int) {
 				go c.worker(room)
 			}
 		}
-	}
 
-	for i := 0; i < len(c.rooms); i++ {
-		<-c.stop
+		// sleep to wait for new room
+		time.Sleep(time.Second * 60)
 	}
 
 	stop <- 1
 }
 
-func (c *PandaClient) Task() {
-	t := time.NewTicker(time.Second * 60 * 2)
+func (c *PandaClient) Task(seconds int) {
+	t := time.NewTicker(time.Duration(seconds*1000) * time.Millisecond)
 	for {
 		<-t.C
 		for _, room := range c.rooms {
-			if p.alive {
+			if room.alive {
 				c.Heartbeat(room)
 			}
 		}
@@ -129,7 +126,6 @@ func (c *PandaClient) worker(p interface{}) {
 	}
 
 	c.PullMsg(p, c.callback)
-	c.stop <- 1
 }
 
 func (c *PandaClient) Prepare(p interface{}) error {
@@ -165,8 +161,9 @@ func (c *PandaClient) Prepare(p interface{}) error {
 		return err
 	}
 
-	param = new(PandaRoom)
-	param.u = fmt.Sprintf("%d@%s", js.Get("data").Get("rid").MustInt(),
+	param := new(PandaParam)
+	param.u = fmt.Sprintf("%d@%s",
+		js.Get("data").Get("rid").MustInt(),
 		js.Get("data").Get("appid").MustString())
 	param.k = 1
 	param.t = 300
@@ -181,25 +178,29 @@ func (c *PandaClient) Prepare(p interface{}) error {
 }
 
 func (c *PandaClient) Connect(p interface{}) error {
-	param := p.(*PandaParam)
-	addr, err := net.ResolveTCPAddr("tcp4", param.addrlist[0])
+	room := p.(*PandaRoom)
+	addr, err := net.ResolveTCPAddr("tcp4", room.param.addrlist[0])
 	if err != nil {
 		return err
 	}
-	param.conn, err = net.DialTCP("tcp", nil, addr)
+	room.conn, err = net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		return err
 	}
 
-	msg := genWriteBuffer(param)
-	param.conn.Write(msg.Bytes())
+	room.alive = true
+
+	msg := genWriteBuffer(room.param)
+	room.conn.Write(msg.Bytes())
 	// 写入呼吸包
-	param.conn.Write([]byte{0x00, 0x06, 0x00, 0x00})
+	room.conn.Write([]byte{0x00, 0x06, 0x00, 0x00})
 
 	return nil
 }
 
 func (c *PandaClient) Heartbeat(p interface{}) error {
+	room := p.(*PandaRoom)
+	log.Println("heartbeat panda", room.id)
 	var msg bytes.Buffer
 	msg.Write([]byte{0x00, 0x06, 0x00, 0x00})
 	err := c.PushMsg(p, msg.Bytes())
@@ -210,16 +211,16 @@ func (c *PandaClient) Heartbeat(p interface{}) error {
 }
 
 func (c *PandaClient) PushMsg(p interface{}, msg []byte) error {
-	param := p.(*PandaParam)
-	param.conn.Write(msg)
+	room := p.(*PandaRoom)
+	room.conn.Write(msg)
 	return nil
 }
 
 func (c *PandaClient) PullMsg(p interface{}, f FuncType) error {
-	param := p.(*PandaParam)
+	room := p.(*PandaRoom)
 	recvBuffer := make([]byte, 2048)
 	for {
-		n, err := param.conn.Read(recvBuffer)
+		n, err := room.conn.Read(recvBuffer)
 		if n == 0 || err != nil {
 			continue
 		}
@@ -266,13 +267,13 @@ func genWriteBuffer(p *PandaParam) bytes.Buffer {
 }
 
 func parse(p interface{}, data []byte) *Msg {
-	param := p.(*PandaParam)
+	room := p.(*PandaRoom)
 	js, _ := simplejson.NewJson(data)
 	_type, _ := js.Get("type").String()
 	if _type == "1" {
 		name := js.Get("data").Get("from").Get("nickName").MustString()
 		text := js.Get("data").Get("content").MustString()
-		return NewMsg("panda", param.room, name, text)
+		return NewMsg("panda", room.id, name, text)
 	}
-	return NewOther("panda", param.room, string(data))
+	return NewOther("panda", room.id, string(data))
 }

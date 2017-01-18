@@ -20,39 +20,6 @@ type IDanmuClient interface {
 	PullMsg(p interface{}, f FuncType) error
 }
 
-type Msg struct {
-	Site  string `json:site`
-	Room  string `json:room`
-	Name  string `json:name`
-	Text  string `json:text`
-	Other string `json:other`
-}
-
-func NewMsg(site, room, name, text string) *Msg {
-	return &Msg{
-		Site:  site,
-		Room:  room,
-		Name:  name,
-		Text:  text,
-		Other: ""}
-}
-
-func NewOther(site, room, other string) *Msg {
-	return &Msg{
-		Site:  site,
-		Room:  room,
-		Name:  "",
-		Text:  "",
-		Other: other}
-}
-
-func (m *Msg) IsMsg() bool {
-	if m.Other != "" {
-		return false
-	}
-	return true
-}
-
 type Danmu struct {
 	stop    chan int
 	clients map[string]IDanmuClient
@@ -61,7 +28,7 @@ type Danmu struct {
 func New(f FuncType) *Danmu {
 	clients := make(map[string]IDanmuClient)
 	clients["panda"] = NewPanda(f)
-	clients["douyu"] = NewDouyu(f)
+	//clients["douyu"] = NewDouyu(f)
 	//clients["huomao"] = NewHuomao()
 	//clients["quanmin"] = NewQuanmin()
 
@@ -70,16 +37,6 @@ func New(f FuncType) *Danmu {
 		clients: clients}
 
 	return danmu
-}
-
-func (d *Danmu) match(url string) IDanmuClient {
-	for k, v := range d.clients {
-		if strings.Contains(url, k) {
-			return v
-		}
-	}
-
-	return nil
 }
 
 func (d *Danmu) Add(url string) {
@@ -113,4 +70,14 @@ func (d *Danmu) Run() {
 		<-d.stop
 	}
 	log.Println("Danmu stop byte!!!")
+}
+
+func (d *Danmu) match(url string) IDanmuClient {
+	for k, v := range d.clients {
+		if strings.Contains(url, k) {
+			return v
+		}
+	}
+
+	return nil
 }
