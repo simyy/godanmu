@@ -32,3 +32,15 @@ func (m *Msg) IsMsg() bool {
 	}
 	return true
 }
+
+type CmdType int
+
+const (
+	ADD CmdType = 1 + iota
+	DEL
+)
+
+type Command struct {
+	cmd CmdType
+	url string
+}

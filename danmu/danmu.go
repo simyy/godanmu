@@ -5,12 +5,12 @@ import (
 	"strings"
 )
 
+var danmu
+
 type FuncType func(*Msg)
 
 type IDanmuClient interface {
-	Add(url string)
-	Has(url string) bool
-	Remove(url string)
+	Send(cmd Command)
 	Online(url string) bool
 	Run(c chan int)
 	Prepare(p interface{}) error
@@ -39,25 +39,20 @@ func New(f FuncType) *Danmu {
 	return danmu
 }
 
-func (d *Danmu) Add(url string) {
-	key := GenRoomKey(TrimUrl(url))
-	for _, client := range d.clients {
-		if client.Has(key) {
-			return
-		}
-	}
+func (d *Danmu) Register(url string) {
 	client := d.match(url)
-	client.Add(url)
+	cmd := &Command{
+		cmd: ADD,
+		url: url}
+	client.Send(cmd)
 }
 
 func (d *Danmu) Remove(url string) {
-	key := GenRoomKey(TrimUrl(url))
-	for _, client := range d.clients {
-		if client.Has(key) {
-			client.Remove(url)
-			return
-		}
-	}
+	client := d.match(url)
+	cmd := &Command{
+		cmd: DEL,
+		url: url}
+	client.Send(cmd)
 }
 
 func (d *Danmu) Run() {
