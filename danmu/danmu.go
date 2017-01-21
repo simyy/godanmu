@@ -5,17 +5,15 @@ import (
 	"strings"
 )
 
-var danmu
-
 type FuncType func(*Msg)
 
 type IDanmuClient interface {
-	Send(cmd Command)
+	Send(cmd *Command)
 	Online(url string) bool
 	Run(c chan int)
 	Prepare(p interface{}) error
 	Connect(p interface{}) error
-	Heartbeat(p interface{}) error
+	Heartbeat(seconds int) error
 	PushMsg(p interface{}, msg []byte) error
 	PullMsg(p interface{}, f FuncType) error
 }

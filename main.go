@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/yxd123/godanmu/danmu"
+	"github.com/yxd123/simDanmu/danmu"
 	"log"
 )
 
@@ -15,8 +15,6 @@ func Handler(msg *danmu.Msg) {
 
 func main() {
 	danmu := danmu.New(Handler)
-	danmu.Add("http://www.panda.tv/573130")
-	//danmu.Add("http://www.panda.tv/434939")
-	//danmu.Add("https://www.douyu.com/613093")
+	danmu.Register("http://www.panda.tv/573130")
 	danmu.Run()
 }
