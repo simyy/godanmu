@@ -8,20 +8,20 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 )
 
 func NewPanda(callback FuncType) *PandaClient {
 	return &PandaClient{
-		channel:  make(chan *Command),
-		rooms:    make(map[string]*PandaRoom),
-		callback: callback}
+		Rooms:    make(map[string]*PandaRoom),
+		Callback: callback}
 }
 
 type PandaClient struct {
-	channel  chan *Command
-	rooms    map[string]*PandaRoom
-	callback FuncType
+	Rooms    map[string]*PandaRoom
+	Lock     sync.RWMutex
+	Callback FuncType
 }
 
 type PandaRoom struct {
@@ -42,8 +42,42 @@ type PandaParam struct {
 	addrlist []string
 }
 
-func (c *PandaClient) Send(command *Command) {
-	c.channel <- command
+func (c *PandaClient) Has(url string) bool {
+	key := GenRoomKey(TrimUrl(url))
+	c.Lock.RLock()
+	defer c.Lock.RUnlock()
+	if _, ok := c.Rooms[key]; ok {
+		return true
+	}
+	return false
+}
+
+func (c *PandaClient) Add(url string) {
+	key := GenRoomKey(TrimUrl(url))
+	log.Println("2222")
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
+	log.Println("333")
+	if _, ok := c.Rooms[key]; !ok {
+		log.Println("444")
+		room := new(PandaRoom)
+		room.url = url
+		room.id = GetRoomId(url)
+		room.alive = false
+		c.Rooms[key] = room
+	}
+	log.Println("666")
+}
+
+func (c *PandaClient) Del(url string) {
+	key := GenRoomKey(TrimUrl(url))
+	c.Lock.Lock()
+	defer c.Lock.Unlock()
+	if _, ok := c.Rooms[key]; ok {
+		c.Lock.RLock()
+		defer c.Lock.RLock()
+		delete(c.Rooms, key)
+	}
 }
 
 func (c *PandaClient) Online(url string) bool {
@@ -65,22 +99,20 @@ func (c *PandaClient) Online(url string) bool {
 func (c *PandaClient) Run(stop chan int) {
 	go c.Heartbeat(2 * 60)
 
+	log.Println("2222")
+
 	for {
-		for _, room := range c.rooms {
+		c.Lock.RLock()
+		log.Println("333")
+		for _, room := range c.Rooms {
 			if !room.alive {
 				go c.worker(room)
 			}
 		}
+		c.Lock.RUnlock()
 
 		// sleep to wait for new room
 		time.Sleep(time.Second * 60)
-
-		select {
-		case command := <-c.channel:
-			log.Println("sss", command)
-		default:
-			log.Println("continue")
-		}
 	}
 
 	stop <- 1
@@ -99,7 +131,7 @@ func (c *PandaClient) worker(p interface{}) {
 		return
 	}
 
-	c.PullMsg(p, c.callback)
+	c.PullMsg(p, c.Callback)
 }
 
 func (c *PandaClient) Prepare(p interface{}) error {
@@ -176,9 +208,9 @@ func (c *PandaClient) Heartbeat(seconds int) error {
 	t := time.NewTicker(time.Duration(seconds*1000) * time.Millisecond)
 	for {
 		<-t.C
-		for _, room := range c.rooms {
+		for _, room := range c.Rooms {
 			if room.alive {
-				log.Println("heartbeat panda", room.id)
+				log.Println("Panda Heartbeat", room.id)
 				var msg bytes.Buffer
 				msg.Write([]byte{0x00, 0x06, 0x00, 0x00})
 				err := c.PushMsg(room, msg.Bytes())
@@ -245,32 +277,6 @@ func genWriteBuffer(p *PandaParam) bytes.Buffer {
 	msg.Write([]byte{0x00, 0x06, 0x00, 0x00})
 
 	return msg
-}
-
-func (c *PandaClient) has(url string) bool {
-	key := GenRoomKey(TrimUrl(url))
-	if _, ok := c.rooms[key]; ok {
-		return true
-	}
-	return false
-}
-
-func (c *PandaClient) add(url string) {
-	key := GenRoomKey(TrimUrl(url))
-	if _, ok := c.rooms[key]; !ok {
-		room := new(PandaRoom)
-		room.url = url
-		room.id = GetRoomId(url)
-		room.alive = false
-		c.rooms[key] = room
-	}
-}
-
-func (c *PandaClient) remove(url string) {
-	key := GenRoomKey(TrimUrl(url))
-	if _, ok := c.rooms[key]; ok {
-		delete(c.rooms, key)
-	}
 }
 
 func parse(p interface{}, data []byte) *Msg {

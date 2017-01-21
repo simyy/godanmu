@@ -8,9 +8,10 @@ import (
 type FuncType func(*Msg)
 
 type IDanmuClient interface {
-	Send(cmd *Command)
-	Online(url string) bool
+	Add(url string)
+	Del(url string)
 	Run(c chan int)
+	Online(url string) bool
 	Prepare(p interface{}) error
 	Connect(p interface{}) error
 	Heartbeat(seconds int) error
@@ -37,20 +38,14 @@ func New(f FuncType) *Danmu {
 	return danmu
 }
 
-func (d *Danmu) Register(url string) {
+func (d *Danmu) Add(url string) {
 	client := d.match(url)
-	cmd := &Command{
-		cmd: ADD,
-		url: url}
-	client.Send(cmd)
+	client.Add(url)
 }
 
-func (d *Danmu) Remove(url string) {
+func (d *Danmu) Del(url string) {
 	client := d.match(url)
-	cmd := &Command{
-		cmd: DEL,
-		url: url}
-	client.Send(cmd)
+	client.Del(url)
 }
 
 func (d *Danmu) Run() {

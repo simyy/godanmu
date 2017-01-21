@@ -15,6 +15,6 @@ func Handler(msg *danmu.Msg) {
 
 func main() {
 	danmu := danmu.New(Handler)
-	danmu.Register("http://www.panda.tv/573130")
+	danmu.Add("http://www.panda.tv/777777")
 	danmu.Run()
 }
