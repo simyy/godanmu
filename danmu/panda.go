@@ -54,12 +54,9 @@ func (c *PandaClient) Has(url string) bool {
 
 func (c *PandaClient) Add(url string) {
 	key := GenRoomKey(TrimUrl(url))
-	log.Println("2222")
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
-	log.Println("333")
 	if _, ok := c.Rooms[key]; !ok {
-		log.Println("444")
 		room := new(PandaRoom)
 		room.url = url
 		room.id = GetRoomId(url)
@@ -99,11 +96,8 @@ func (c *PandaClient) Online(url string) bool {
 func (c *PandaClient) Run(stop chan int) {
 	go c.Heartbeat(2 * 60)
 
-	log.Println("2222")
-
 	for {
 		c.Lock.RLock()
-		log.Println("333")
 		for _, room := range c.Rooms {
 			if !room.alive {
 				go c.worker(room)

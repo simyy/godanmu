@@ -15,6 +15,7 @@ func Handler(msg *danmu.Msg) {
 
 func main() {
 	danmu := danmu.New(Handler)
-	danmu.Add("http://www.panda.tv/777777")
+	//danmu.Add("http://www.panda.tv/777777")
+	danmu.Add("https://www.douyu.com/793400")
 	danmu.Run()
 }

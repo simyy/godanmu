@@ -10,31 +10,34 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 func NewDouyu(callback FuncType) *DouyuClient {
 	return &DouyuClient{
-		rooms:    make(map[string]*dparams),
-		callback: callback,
-		stop:     make(chan int)}
+		Rooms:    make(map[string]*DouyuRoom),
+		Callback: callback}
 }
 
 type DouyuClient struct {
-	rooms    map[string]*dparams
-	callback FuncType
-	stop     chan int
+	Rooms    map[string]*DouyuRoom
+	Lock     sync.RWMutex
+	Callback FuncType
 }
 
-type dparams struct {
-	url  string
-	room string
-	conn net.Conn
+type DouyuRoom struct {
+	url   string
+	room  string
+	alive bool
+	conn  net.Conn
 }
 
 func (d *DouyuClient) Has(url string) bool {
 	key := GenRoomKey(url)
-	if _, ok := d.rooms[key]; ok {
+	d.Lock.RLock()
+	defer d.Lock.RUnlock()
+	if _, ok := d.Rooms[key]; ok {
 		return true
 	}
 	return false
@@ -45,38 +48,58 @@ func (d *DouyuClient) Add(url string) {
 		return
 	}
 	key := GenRoomKey(TrimUrl(url))
-	p := new(dparams)
+	d.Lock.RLock()
+	defer d.Lock.RUnlock()
+	p := new(DouyuRoom)
 	p.url = url
 	p.room = d.getRoomId(url)
-	d.rooms[key] = p
+	p.alive = false
+	d.Rooms[key] = p
 }
 
-func (d *DouyuClient) Heartbeat(p interface{}) error {
-	return nil
+func (d *DouyuClient) Del(url string) {
+	key := GenRoomKey(TrimUrl(url))
+	d.Lock.RLock()
+	defer d.Lock.RUnlock()
+	if _, ok := d.Rooms[key]; ok {
+		delete(d.Rooms, key)
+	}
 }
 
 func (d *DouyuClient) Online(url string) bool {
-	// TODO
+	tmpl := "http://open.douyucdn.cn/api/RoomApi/room/%s"
+	configUrl := fmt.Sprintf(tmpl, GetRoomId(url))
+	body, err := HttpGet(configUrl, nil)
+
+	js, _ := simplejson.NewJson(body)
+	if js.Get("error").MustInt() != 0 {
+		return false
+	}
+
+	if js.Get("data").Get("room_status").MustString() != "1" {
+		return false
+	}
+
 	return true
 }
 
-func (d *DouyuClient) Remove(url string) {
-	key := GenRoomKey(TrimUrl(url))
-
-	if _, ok := d.rooms[key]; ok {
-		delete(d.rooms, key)
-	}
-}
-
 func (d *DouyuClient) Run(stop chan int) {
-	for _, param := range d.rooms {
-		// TODO
-		go d.worker(param)
+	go d.Heartbeat(30)
+
+	for {
+		d.Lock.RLock()
+		for _, room := range d.Rooms {
+			if !room.alive {
+				go d.worker(room)
+			}
+		}
+		d.Lock.RUnlock()
+
+		time.Sleep(time.Second * 60)
 	}
 
-	for i := 0; i < len(d.rooms); i++ {
-		<-d.stop
-	}
+	stop <- 1
+
 }
 
 func (d *DouyuClient) worker(p interface{}) {
@@ -92,9 +115,7 @@ func (d *DouyuClient) worker(p interface{}) {
 		return
 	}
 
-	d.PullMsg(p, d.callback)
-
-	d.stop <- 1
+	d.PullMsg(p, d.Callback)
 }
 
 func (d *DouyuClient) Prepare(p interface{}) error {
@@ -102,7 +123,7 @@ func (d *DouyuClient) Prepare(p interface{}) error {
 }
 
 func (d *DouyuClient) Connect(p interface{}) error {
-	mparam := p.(*dparams)
+	room := p.(*DouyuRoom)
 
 	addr, _ := net.ResolveTCPAddr("tcp4", "openbarrage.douyutv.com:8601")
 	conn, err := net.DialTCP("tcp", nil, addr)
@@ -110,13 +131,33 @@ func (d *DouyuClient) Connect(p interface{}) error {
 		return err
 	}
 
-	mparam.conn = conn
+	room.alive = true
+	room.conn = conn
 
 	return nil
 }
 
+func (d *DouyuClient) Heartbeat(seconds int) error {
+	t := time.NewTicker(time.Duration(seconds*1000) * time.Millisecond)
+	for {
+		<-t.C
+		for _, room := range d.Rooms {
+			if room.alive {
+				log.Println("Douyu Hearbeat", room.room)
+				tmpl := "type@=keeplive/tick@=%s/"
+				msg := fmt.Sprintf(tmpl, room.room)
+				err := d.PushMsg(room, []byte(msg))
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
-	mparam := p.(*dparams)
+	room := p.(*DouyuRoom)
 
 	s := 9 + len(msg)
 	int16buf := new(bytes.Buffer)
@@ -131,7 +172,7 @@ func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
 	content.Write(msg)
 	content.Write([]byte{0x00})
 
-	_, err := mparam.conn.Write(content.Bytes())
+	_, err := room.conn.Write(content.Bytes())
 	if err != nil {
 		return err
 	}
@@ -140,35 +181,35 @@ func (d *DouyuClient) PushMsg(p interface{}, msg []byte) error {
 }
 
 func (d *DouyuClient) PullMsg(p interface{}, f FuncType) error {
-	mparam := p.(*dparams)
+	room := p.(*DouyuRoom)
 
 	tmpl := "type@=loginreq/roomid@=%s/"
-	msg := fmt.Sprintf(tmpl, mparam.room)
-	err := d.PushMsg(mparam, []byte(msg))
+	msg := fmt.Sprintf(tmpl, room.room)
+	err := d.PushMsg(room, []byte(msg))
 	if err != nil {
 		return err
 	}
 
 	recvBuffer := make([]byte, 2048)
 
-	mparam.conn.Read(recvBuffer)
+	room.conn.Read(recvBuffer)
 
 	tmpl = "type@=joingroup/rid@=%s/gid@=-9999/"
-	msg = fmt.Sprintf(tmpl, mparam.room)
-	err = d.PushMsg(mparam, []byte(msg))
+	msg = fmt.Sprintf(tmpl, room.room)
+	err = d.PushMsg(room, []byte(msg))
 	if err != nil {
 		return err
 	}
 
 	tmpl = "type@=keeplive/tick@=" + strconv.FormatInt(time.Now().Unix(), 10)
-	err = d.PushMsg(mparam, []byte(tmpl))
+	err = d.PushMsg(room, []byte(tmpl))
 	if err != nil {
 		return err
 	}
 
 	for {
-		mparam.conn.Read(recvBuffer)
-		msg := d.parse(mparam, recvBuffer)
+		room.conn.Read(recvBuffer)
+		msg := d.parse(room, recvBuffer)
 		f(msg)
 	}
 
@@ -196,7 +237,7 @@ func (d *DouyuClient) getRoomId(url string) string {
 }
 
 func (d *DouyuClient) parse(p interface{}, data []byte) *Msg {
-	mparam := p.(*dparams)
+	room := p.(*DouyuRoom)
 
 	content := string(data)
 	content = strings.Replace(content, "@=", "\":\"", -1)
@@ -209,10 +250,10 @@ func (d *DouyuClient) parse(p interface{}, data []byte) *Msg {
 	for _, item := range contents {
 		tmp := "{\"" + item + "}"
 		sj, _ := simplejson.NewJson([]byte(tmp))
-		name, _ := sj.Get("nn").String()
-		txt, _ := sj.Get("txt").String()
-		return NewMsg("douyu", mparam.room, name, txt)
+		name := sj.Get("nn").MustString()
+		txt := sj.Get("txt").MustString()
+		return NewMsg("douyu", room.room, name, txt)
 	}
 
-	return NewOther("douyu", mparam.room, string(content))
+	return NewOther("douyu", room.room, string(content))
 }
