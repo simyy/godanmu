@@ -63,7 +63,6 @@ func (c *PandaClient) Add(url string) {
 		room.alive = false
 		c.Rooms[key] = room
 	}
-	log.Println("666")
 }
 
 func (c *PandaClient) Del(url string) {

@@ -29,7 +29,7 @@ func New(f FuncType) *Danmu {
 	clients["panda"] = NewPanda(f)
 	clients["douyu"] = NewDouyu(f)
 	//clients["huomao"] = NewHuomao()
-	//clients["quanmin"] = NewQuanmin()
+	clients["quanmin"] = NewQuanmin(f)
 
 	danmu := &Danmu{
 		stop:    make(chan int),
