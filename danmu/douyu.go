@@ -69,7 +69,7 @@ func (d *DouyuClient) Del(url string) {
 func (d *DouyuClient) Online(url string) bool {
 	tmpl := "http://open.douyucdn.cn/api/RoomApi/room/%s"
 	configUrl := fmt.Sprintf(tmpl, GetRoomId(url))
-	body, err := HttpGet(configUrl, nil)
+	body, _ := HttpGet(configUrl, nil)
 
 	js, _ := simplejson.NewJson(body)
 	if js.Get("error").MustInt() != 0 {
