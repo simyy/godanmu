@@ -17,6 +17,7 @@ func main() {
 	danmu := danmu.New(Handler)
 	//danmu.Add("http://www.panda.tv/777777")
 	//danmu.Add("https://www.douyu.com/793400")
-	danmu.Add("http://www.quanmin.tv/3446603")
+	//danmu.Add("http://www.quanmin.tv/3446603")
+	danmu.Add("https://www.huomao.com/10519")
 	danmu.Run()
 }
