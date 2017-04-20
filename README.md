@@ -1,6 +1,6 @@
 # simDanmu
 
-a Danmu program writen with golang.
+a danmu program writen with golang.
 
 ## support
 
