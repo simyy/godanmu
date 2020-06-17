@@ -1,4 +1,4 @@
-# sim-danmu
+# simdanmu
 
 A danmu program writen with golang.
 
